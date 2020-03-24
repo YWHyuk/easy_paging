@@ -19,105 +19,135 @@ mmu 객체는 가상 메모리 객체에 대해 translation을 수행한다.(Pag
 사용자는 커널 이미지의 오프셋을 알 수 있다.
 """
 from array import array
+import sys
+
+from exception import *
+
+def ARM64_HW_PGTABLE_LEVEL_SHIFT(n):
+    return ((self.PAGE_SHIFT - 3) * (4 - (n)) + 3)
+
+def pxd_none(pxd):
+    return not(pxd & 0b1)
+
+def pxd_block(pxd):
+    return pxd & 0b10
+
+def desc_to_table_address(pxdp):
+    """Only for 48bit 4KB"""
+    return pxdp & 0xFFFFFFFFF000
+
+def address_range_check(func):
+    def func_wrapper(self, address):
+        if address < 0 or address > 0xFFFFFFFFFFFFFFFF:
+            raise AddressRangeError()
+        func(self, address)
+
+class Paging_info():
+    def __init__(self, shift=0,size=0,ptrs=0):
+        self.SHIFT = shift
+        self.SIZE = size
+        self.PTRS = ptrs
+
+    def address_to_index(self, address):
+        return ((address >> self.SHIFT) & self.PTRS) * 8
+    
+    def address_offset(self, address):
+        return (address & (self.SIZE - 1))
 
 class VirtualMachine():
     def __init__(self):
         return
     
 class mmu:
-    def __init__(self, CONFIG_ARM64_PAGE_SHIFT=12, CONFIG_PGTABLE_LEVELS=4, va_bit=48):
+    def __init__(self, physical_memory, CONFIG_ARM64_PAGE_SHIFT=12, CONFIG_PGTABLE_LEVELS=4, va_bit=48):
         self._mmu_on = False
         self._ttbr1 = 0
         self._ttbr0 = 0
-        
-        #Paging option
-        self.PAGE_SHIFT = CONFIG_ARM64_PAGE_SHIFT
-        self.PAGE_SIZE = 1 << self.PAGE_SHIFT
-        self.PTRS_PER_PTE = (1 << (self.PAGE_SHIFT - 3))
-        self.CONFIG_PGTABLE_LEVELS = CONFIG_PGTABLE_LEVELS
+        self._physical_memory = physical_memory
         self._va_bit = va_bit
+         
+        #Paging option
+        self.pte = Paging_info(CONFIG_ARM64_PAGE_SHIFT, 1 << self.PAGE_SHIFT, (1 << (self.PAGE_SHIFT - 3)))
         
         # PMD initialize
         if CONFIG_PGTABLE_LEVELS > 2:
-            self.PMD_SHIFT = self.ARM64_HW_PGTABLE_LEVEL_SHIFT(2)
-            self.PMD_SIZE = 1 << self.PMD_SHIFT
-            self.PTRS_PER_PMD = self.PTRS_PER_PTE
+            pxd_shift = ARM64_HW_PGTABLE_LEVEL_SHIFT(2)
+            self.pmd = Paging_info(pxd_shift, 1 << pxd_shift, self.pte.PTRS) 
         else:
-            self.PMD_SHIFT = 0
-            self.PMD_SIZE = 0
-            self.PTRS_PER_PMD = 0
-        
+            self.pmd = Paging_info()
+            
         # PUD initialize
         if CONFIG_PGTABLE_LEVELS > 3:
-            self.PUD_SHIFT = self.ARM64_HW_PGTABLE_LEVEL_SHIFT(1)
-            self.PUD_SIZE = 1 << self.PUD_SHIFT
-            self.PTRS_PER_PUD = self.PTRS_PER_PTE
+            pxd_shift = ARM64_HW_PGTABLE_LEVEL_SHIFT(1)
+            self.pud = Paging_info(pxd_shift, 1 << pxd_shift, self.pte.PTRS) 
         else:
-            self.PUD_SHIFT = 0
-            self.PUD_SIZE = 0
-            self.PTRS_PER_PUD = 0
-        
+            self.pud = Paging_info()
+            
         # PGD initialize
-        self.PGDIR_SHIFT = self.ARM64_HW_PGTABLE_LEVEL_SHIFT(4 - self.CONFIG_PGTABLE_LEVELS)
-        self.PGDIR_SIZE = 1 << self.PUD_SHIFT
-        self.PTRS_PER_PGD = 1 << (self._va_bit - self.PTRS_PER_PTE)
+        pxd_shift = ARM64_HW_PGTABLE_LEVEL_SHIFT(4 - self.CONFIG_PGTABLE_LEVELS)
+        self.pgd = Paging_info(pxd_shift, 1 << pxd_shift, 1 << (self._va_bit - self.pte.PTRS)) 
 
         # section init
-        self.SECTION_SHIFT = self.PMD_SHIFT
-        self.SECTION_SIZE = self.PMD_SIZE
-
-        self.physical_memory = PhysicalMemory()
-
-    def address_translation(self, address):
-        if address < 0 or address > 0xFFFFFFFFFFFFFFFF:
-            raise AddressRangeError()
+        self.section = self.pmd
         
+    def address_translation(self, address):
         if self._mmu_on:
             return self.translation_table_walk(address)
         else:
             return address
     
     def translation_table_walk(self, address):
-        pgd_address = self._ttbr1 if address >> self._va_bit != 0 else self._ttbr0
-        
-        if pgd_address % self.PAGE_SIZE:
+        pxd = self._ttbr1 if (address >> self._va_bit) != 0 else self._ttbr0
+    
+        if pxd % self.PAGE_SIZE:
             raise PageFaultError()
-        
 
-        # 4k 4level hard coding
+        level_list = [self.pgd, self.pud, self.pmd, self.pte]
 
-    def ARM64_HW_PGTABLE_LEVEL_SHIFT(self, n):
-        return ((self.PAGE_SHIFT - 3) * (4 - (n)) + 3)
+        for level in level_list:
+            if level.SHIFT:
+                pxdp = desc_to_table_address(pxd) + level.address_to_index(address)
+                pxd = self._physical_memory.load(pxdp, 8) 
+            
+            if pxd_none(pxd):
+                raise PageFaultError()
 
-def operandsize_check(func):
-    def func_wrapper(self, address, size, *argv):
-        if size == 1:
-            prefix = 'B'
-        elif size == 2:
-            prefix = 'H'
-        elif size == 4:
-            prefix = 'L'
-        elif size == 8:
-            prefix = 'Q'
-        else:
-            raise UnSupportedOperandSize()
-        func(self, address, size, *argv)
+            if pxd_block(pxd):
+                if level == self.pte:
+                    raise PageFaultError()
+
+                return self.desc_to_table_address(pxd) + level.address_offset(address)
+
+        return self.desc_to_table_address(pxd) + self.pte.address_offset(address)
 
 class PhysicalMemory:
     def __init__(self):
         """512MB 바이트 배열을 생성, 커널 이미지를 로드한다."""
-        self.memory = array('b',(0 for i in range(0,512*1024*1024)))
-    def load_kimg(self):
-        pass
+        self.memory = array('B',(0 for i in range(0,512*1024*1024)))
+        self.kimg = Kimage()
 
-    @operandsize_check
-    @addressrange_check
     def load(self, address, size):
+        """ Return unsigned value """
+        memv = memoryview(self.memory[address:address+size])
+        return memv.cast(self.size_to_suffix(size))[0]
+    
+    def store(self, address, size, value):
+        barray = value.to_bytes(size,sys.byteorder)
         
-        memv = memoryview(self.memory[address:address+size])    
-        pass
-    def store(self):
-        pass
+        for src, dest in zip(barray, range(address, address + size)):
+            self.memory[dest] = src
+    
+    def size_to_suffix(self, size):
+        if size == 1:
+            return 'B'
+        elif size == 2:
+            return 'H'
+        elif size == 4:
+            return 'L'
+        elif siez == 8:
+            return 'Q'
+        else:
+            raise UnSupportedOperandSize()
 
 class VirtualMemory:
     def __init__(self):
@@ -133,11 +163,14 @@ def read(address, value):
         #Translation
         #  else:
         #Physical
+    pass
+
 def write(address, value):
     #if mmu.mmu_on:
         #Translation
     #else:
         #Physical
+    pass
 
 def get_symbol():
     return
@@ -159,11 +192,3 @@ def get_dram_info():
 
 def get_kimg_offset():
     return
-
-
-def UnSupportedOperandSize(exception):
-    pass
-def PageFaultError(exception):
-    pass
-def AddressRangeError(exception):
-    pass
