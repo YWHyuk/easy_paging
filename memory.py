@@ -19,28 +19,23 @@ mmu 객체는 가상 메모리 객체에 대해 translation을 수행한다.(Pag
 사용자는 커널 이미지의 오프셋을 알 수 있다.
 """
 from array import array
-import sys
+import sys, random
 
 from exception import *
 
 def ARM64_HW_PGTABLE_LEVEL_SHIFT(n):
     return ((self.PAGE_SHIFT - 3) * (4 - (n)) + 3)
 
+def desc_to_table_address(pxdp):
+    """Only for 48bit 4KB"""
+    return pxdp & 0xFFFFFFFFF000
+    
 def pxd_none(pxd):
     return not(pxd & 0b1)
 
 def pxd_block(pxd):
     return pxd & 0b10
 
-def desc_to_table_address(pxdp):
-    """Only for 48bit 4KB"""
-    return pxdp & 0xFFFFFFFFF000
-
-def address_range_check(func):
-    def func_wrapper(self, address):
-        if address < 0 or address > 0xFFFFFFFFFFFFFFFF:
-            raise AddressRangeError()
-        func(self, address)
 
 class Paging_info():
     def __init__(self, shift=0,size=0,ptrs=0):
@@ -56,9 +51,44 @@ class Paging_info():
 
 class VirtualMachine():
     def __init__(self):
-        return
+        self._physical_memory = PhysicalMemory()
+        self._kimage = Kimage()
+        self.mmu = MMU(self._physical_memory)
     
-class mmu:
+    # User api
+    def load(self, address, size):
+        if size != 1 and size != 2 and size != 4 and size != 8:
+            raise UnSupportedOperandSize()
+
+        if address < 0 or (address + size) > 0xFFFFFFFFFFFFFFFF:
+            raise AddressRangeError()
+        
+        if address // self.mmu.pte.SHIFT != address+size // self.mmu.pte.SHIFT:
+            raise BoundaryError()
+        
+        physical_address = self.mmu.address_translation(address)
+        return self._physical_memory.load(physical_address, size)
+        
+    def store(self, address, size, value):
+        if size != 1 and size != 2 and size != 4 and size != 8:
+            raise UnSupportedOperandSize()
+
+        if address < 0 or (address + size) > 0xFFFFFFFFFFFFFFFF:
+            raise AddressRangeError()
+        
+        if address // self.mmu.pte.SHIFT != address+size // self.mmu.pte.SHIFT:
+            raise BoundaryError()
+
+        physical_address = self.mmu.address_translation(address)
+        self._physical_memory.store(physical_address, size, value)
+        
+    def symbols(self):
+        return self._kimage.symbols()
+    
+    def kimg_offset(self):
+        return self._kimage.kimg_offset
+
+class MMU:
     def __init__(self, physical_memory, CONFIG_ARM64_PAGE_SHIFT=12, CONFIG_PGTABLE_LEVELS=4, va_bit=48):
         self._mmu_on = False
         self._ttbr1 = 0
@@ -119,23 +149,34 @@ class mmu:
                 return self.desc_to_table_address(pxd) + level.address_offset(address)
 
         return self.desc_to_table_address(pxd) + self.pte.address_offset(address)
+    
+    def mmu_on(self):
+        self._mmu_on = True
 
+    def mmu_off(self):
+        self._mmu_on = False
+
+    def set_ttbr1(self, address):
+        mmu._ttrb1 = address
+
+    def set_ttbr0(self, address):
+        mmu._ttrb0 = address
+    
 class PhysicalMemory:
     def __init__(self):
         """512MB 바이트 배열을 생성, 커널 이미지를 로드한다."""
-        self.memory = array('B',(0 for i in range(0,512*1024*1024)))
-        self.kimg = Kimage()
-
+        self._memory = array('B',(0 for i in range(0,512*1024*1024)))
+        
     def load(self, address, size):
         """ Return unsigned value """
-        memv = memoryview(self.memory[address:address+size])
+        memv = memoryview(self._memory[address:address+size])
         return memv.cast(self.size_to_suffix(size))[0]
     
     def store(self, address, size, value):
         barray = value.to_bytes(size,sys.byteorder)
         
         for src, dest in zip(barray, range(address, address + size)):
-            self.memory[dest] = src
+            self._memory[dest] = src
     
     def size_to_suffix(self, size):
         if size == 1:
@@ -149,46 +190,32 @@ class PhysicalMemory:
         else:
             raise UnSupportedOperandSize()
 
-class VirtualMemory:
+class Kimage:
     def __init__(self):
-        return
+        """4k 4level system.map을 기준으로 하드 코딩됨"""
+        self._symbol = {}
+        self._symbol["_text"] = 0xffff000010080000
+        self._symbol["_end"] = 0xffff00001144d000
+        self._symbol["swapper_pg_dir"] = 0xffff0000110c5000
+        self._symbol["swapper_pg_end"] = 0xffff0000110c6000
+        self._symbol["init_pg_dir"] = 0xffff00001144a000
+        self._symbol["init_pg_end"] = 0xffff00001144d000
+        self._symbol["bm_pud"] = 0xffff0000113db000
+        self._symbol["bm_pmd"] = 0xffff0000113dc000
+        self._symbol["bm_pte"] = 0xffff0000113dd000
 
-class Symbol:
-    def __init__(self):
-        return        
-
-# User api
-def read(address, value):
-    #if mmu.mmu_on:
-        #Translation
-        #  else:
-        #Physical
-    pass
-
-def write(address, value):
-    #if mmu.mmu_on:
-        #Translation
-    #else:
-        #Physical
-    pass
-
-def get_symbol():
-    return
-
-def mmu_on():
-    mmu.mmu_on = True
-
-def mmu_off():
-    mmu.mmu_on = False
-
-def set_ttbr1(address):
-    mmu.ttrb1 = address
-
-def set_ttbr0(address):
-    mmu.ttrb0 = address
-
-def get_dram_info():
-    return
-
-def get_kimg_offset():
-    return
+        # Fixmap address
+        self._symbol["FIX_PTE"] = 0xffff7dfffe633000
+        self._symbol["FIX_PMD"] = 0xffff7dfffe634000
+        self._symbol["FIX_PUD"] = 0xffff7dfffe635000
+        self._symbol["FIX_PGD"] = 0xffff7dfffe636000
+        
+        #2~256MB사이에 2MB align으로, 커널 이미지 시작 위치를 정한다.
+        physical_kimg_offset = random.randint(1,128) * 2 * 1024 * 1024
+        self._kimg_offset = self._symbol["_text"] - physical_kimg_offset
+    
+    def symbols(self):
+        return dict(self._symbol)        
+    
+    def kimg_offset(self):
+        return self._kimg_offset
