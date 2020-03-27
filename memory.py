@@ -49,43 +49,58 @@ class Paging_info():
 
 class VirtualMachine():
     def __init__(self):
-        self.physical_memory = PhysicalMemory()
+        self.__physical_memory = PhysicalMemory()
         self.__kimage = Kimage()
-        self.mmu = MMU(self.physical_memory)
+        self.__mmu = MMU(self.physical_memory)
     
     # User api
     def load(self, address, size):
         if size != 1 and size != 2 and size != 4 and size != 8:
-            raise UnSupportedOperandSize()
+            raise UnSupportedOperandSize
 
         if address < 0 or (address + size) > 0xFFFFFFFFFFFFFFFF:
-            raise AddressRangeError()
+            raise AddressRangeError
         
-        if address // self.mmu.pte.SHIFT != address+size // self.mmu.pte.SHIFT:
-            raise BoundaryError()
+        if address >> self.__mmu.pte.SHIFT != address+size >> self.__mmu.pte.SHIFT:
+            raise BoundaryError
         
-        physical_address = self.mmu.address_translation(address)
-        return self.physical_memory.load(physical_address, size)
+        physical_address = self.__mmu.address_translation(address)
+        return self.__physical_memory.load(physical_address, size)
         
     def store(self, address, size, value):
         if size != 1 and size != 2 and size != 4 and size != 8:
-            raise UnSupportedOperandSize()
+            raise UnSupportedOperandSize
 
         if address < 0 or (address + size) > 0xFFFFFFFFFFFFFFFF:
-            raise AddressRangeError()
+            raise AddressRangeError
         
-        if address // self.mmu.pte.SHIFT != address+size // self.mmu.pte.SHIFT:
-            raise BoundaryError()
+        if address // self.__mmu.pte.SHIFT != address+size // self.__mmu.pte.SHIFT:
+            raise BoundaryError
 
-        physical_address = self.mmu.address_translation(address)
-        self.physical_memory.store(physical_address, size, value)
+        physical_address = self.__mmu.address_translation(address)
+        self.__physical_memory.store(physical_address, size, value)
         
     def symbols(self):
         return self.__kimage.symbols()
     
     def kimg_offset(self):
         return self.__kimage.kimg_offset()
+    
+    def is_mmu_on(self):
+        return self.__mmu.is_mmu_on()
+    
+    def mmu_on(self):
+        self.__mmu.mmu_on()
 
+    def mmu_off(self):
+        self.__mmu.mmu_off()
+
+    def set_ttbr1(self, address):
+        self.__mmu.set_ttbr1(address)
+        
+    def set_ttbr0(self, address):
+        self.__mmu.set_ttbr0(address)
+    
 class MMU:
     def __init__(self, physical_memory, CONFIG_ARM64_PAGE_SHIFT=12, CONFIG_PGTABLE_LEVELS=4, va_bit=48):
         self.__mmu_on = False
@@ -127,8 +142,8 @@ class MMU:
     def translation_table_walk(self, address):
         pxd = self.__ttbr1 if (address >> self.__va_bit) != 0 else self.__ttbr0
     
-        if pxd % self.PAGE_SIZE:
-            raise PageFaultError()
+        if pxd % self.pte.SIZE:
+            raise PageFaultError
 
         level_list = [self.pgd, self.pud, self.pmd, self.pte]
 
@@ -138,15 +153,18 @@ class MMU:
                 pxd = self.__physical_memory.load(pxdp, 8) 
             
             if pxd_none(pxd):
-                raise PageFaultError()
+                raise PageFaultError
 
             if pxd_block(pxd):
                 if level == self.pte:
-                    raise PageFaultError()
+                    raise PageFaultError
 
                 return self.desc_to_table_address(pxd) + level.address_offset(address)
 
         return self.desc_to_table_address(pxd) + self.pte.address_offset(address)
+    
+    def is_mmu_on(self):
+        return self.__mmu_on
     
     def mmu_on(self):
         self.__mmu_on = True
@@ -165,32 +183,29 @@ class MMU:
 
 class PhysicalMemory:
     def __init__(self):
-        """512MB 바이트 배열을 생성, 커널 이미지를 로드한다."""
-        temp = numpy.zeros(64*1024*1024,numpy.int).tolist()
-        self._memory = array('Q',temp)
+        """512MB 바이트 배열을 생성."""
+        self.__memory = numpy.zeros(512*1024*1024,numpy.uint8)
         
     def load(self, address, size):
         """ Return unsigned value """
-        memv = memoryview(self._memory[address:address+size])
-        return memv.cast(self.size_to_suffix(size))[0]
+        part = self.__memory[address:address+size]
+        return part.view(dtype=self.size_to_suffix(size))[0]
     
     def store(self, address, size, value):
-        barray = value.to_bytes(size,sys.byteorder)
+        part = self.__memory[address:address+size]
+        part.view(dtype=self.size_to_suffix(size))[0] = value
         
-        for src, dest in zip(barray, range(address, address + size)):
-            self._memory[dest] = src
-    
     def size_to_suffix(self, size):
         if size == 1:
-            return 'B'
+            return numpy.uint8
         elif size == 2:
-            return 'H'
+            return numpy.uint16
         elif size == 4:
-            return 'L'
+            return numpy.uint32
         elif size == 8:
-            return 'Q'
+            return numpy.uint64
         else:
-            raise UnSupportedOperandSize()
+            raise UnSupportedOperandSize
 
 class Kimage:
     def __init__(self):

@@ -17,7 +17,6 @@ class MainWindow(QMainWindow):
         #self.ui.console.setStyleSheet("color:#F8F8F2;")
         self.ui.console.eval_queued()
         
-
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     window = MainWindow()
