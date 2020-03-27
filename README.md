@@ -4,7 +4,7 @@
 1. pyqt5
 2. numpy
 3. pyqtconsole
-4. pygraphviz
+4. graphviz
 
 ## Install pythom module
 
@@ -20,9 +20,9 @@ pip install numpy
 ```
 pip install pyqtconsole
 ```
-4. install pygraphviz
+4. install graphviz
 ```
-pip install pygraphviz
+pip install graphviz
 ```
 
 # How to use
