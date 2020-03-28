@@ -138,7 +138,7 @@ class MMU:
             
         # PGD initialize
         pxd_shift = self.ARM64_HW_PGTABLE_LEVEL_SHIFT(4 - CONFIG_PGTABLE_LEVELS)
-        self.pgd = Paging_info(pxd_shift, 1 << pxd_shift, 1 << (self.__va_bit - pxd_shift)) 
+        self.pgd = Paging_info(pxd_shift, 1 << pxd_shift, (1 << (self.__va_bit - pxd_shift)) -  1) 
 
         # section init
         self.section = self.pmd
@@ -169,9 +169,9 @@ class MMU:
                 if level == self.pte:
                     raise PageFaultError
 
-                return self.desc_to_table_address(pxd) + level.address_offset(address)
+                return desc_to_table_address(pxd) + level.address_offset(address)
 
-        return self.desc_to_table_address(pxd) + self.pte.address_offset(address)
+        return desc_to_table_address(pxd) + self.pte.address_offset(address)
     
     def is_mmu_on(self):
         return self.__mmu_on
