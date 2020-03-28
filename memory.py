@@ -99,9 +99,17 @@ class VirtualMachine():
 
     def set_ttbr1(self, address):
         self.__mmu.set_ttbr1(address)
-        
+
     def set_ttbr0(self, address):
         self.__mmu.set_ttbr0(address)
+
+    def get_ttbr1(self):
+        return self.__mmu.get_ttbr1()
+
+    def get_ttbr0(self):
+        return self.__mmu.get_ttbr0()
+
+
     
 class MMU:
     def __init__(self, physical_memory, CONFIG_ARM64_PAGE_SHIFT=12, CONFIG_PGTABLE_LEVELS=4, va_bit=48):
@@ -175,10 +183,16 @@ class MMU:
         self.__mmu_on = False
 
     def set_ttbr1(self, address):
-        mmu.__ttrb1 = address
+        self.__ttbr1 = address
 
     def set_ttbr0(self, address):
-        mmu.__ttrb0 = address
+        self.__ttbr0 = address
+
+    def get_ttbr0(self):
+        return self.__ttbr0
+
+    def get_ttbr1(self):
+        return self.__ttbr1
     
     def ARM64_HW_PGTABLE_LEVEL_SHIFT(self, n):
         return ((self.PAGE_SHIFT - 3) * (4 - (n)) + 3)
