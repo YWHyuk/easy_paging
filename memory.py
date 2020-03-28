@@ -76,7 +76,7 @@ class VirtualMachine():
         if address < 0 or (address + size) > 0xFFFFFFFFFFFFFFFF:
             raise AddressRangeError
         
-        if address // self.__mmu.pte.SHIFT != address+size // self.__mmu.pte.SHIFT:
+        if (address >> self.__mmu.pte.SHIFT) != (address+size >> self.__mmu.pte.SHIFT):
             raise BoundaryError
 
         physical_address = self.__mmu.address_translation(address)
