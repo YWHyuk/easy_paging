@@ -1,35 +1,22 @@
 # Install
 ## Dependency
 
-1. pyqt5
-2. numpy
-3. pyqtconsole
-4. graphviz
+1. numpy
 
 ## Install pythom module
 
-1. install pyqt5
-```
-pip install pyqt5
-```
-2. install numpy
+1. install numpy
 ```
 pip install numpy
 ```
-3. install pyqtconsole
-```
-pip install pyqtconsole
-```
-4. install graphviz
-```
-pip install graphviz
-```
 
 # How to use
-인터프리터가 열리면, 해당 네임 스페이스에는 vm이라는 객체가 생성되어 있습니다.
-해당 객체를 통해 메모리 관련 메소드를 호출할 수 있습니다.
-
-사용할 수 있는 메소드들은 다음과 같습니다.
+python interperter을 열고, memory.py를 임포트합니다.
+그런다음 VirtualMachine 객체를 생성하면 됩니다.
+```
+vm = VirtualMachine()
+```
+해당 객체에서 사용할 수 있는 메소드들은 다음과 같습니다.
 
 #### store(address, size, value)
 ```
