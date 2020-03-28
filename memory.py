@@ -29,9 +29,11 @@ def desc_to_table_address(pxdp):
     return pxdp & 0xFFFFFFFFF000
     
 def pxd_none(pxd):
+    print(pxd)
     return not(pxd & 0b1)
 
 def pxd_block(pxd):
+    print(pxd)
     return pxd & 0b10
 
 
@@ -51,7 +53,7 @@ class VirtualMachine():
     def __init__(self):
         self.__physical_memory = PhysicalMemory()
         self.__kimage = Kimage()
-        self.__mmu = MMU(self.physical_memory)
+        self.__mmu = MMU(self.__physical_memory)
     
     # User api
     def load(self, address, size):
@@ -189,7 +191,7 @@ class PhysicalMemory:
     def load(self, address, size):
         """ Return unsigned value """
         part = self.__memory[address:address+size]
-        return part.view(dtype=self.size_to_suffix(size))[0]
+        return int(part.view(dtype=self.size_to_suffix(size))[0])
     
     def store(self, address, size, value):
         part = self.__memory[address:address+size]
