@@ -44,7 +44,7 @@ class Paging_info():
         self.PTRS = ptrs
 
     def address_to_index(self, address):
-        return ((address >> self.SHIFT) & self.PTRS) * 8
+        return ((address >> self.SHIFT) & (self.PTRS - 1)) * 8
     
     def address_offset(self, address):
         return (address & (self.SIZE - 1))
@@ -138,7 +138,7 @@ class MMU:
             
         # PGD initialize
         pxd_shift = self.ARM64_HW_PGTABLE_LEVEL_SHIFT(4 - CONFIG_PGTABLE_LEVELS)
-        self.pgd = Paging_info(pxd_shift, 1 << pxd_shift, (1 << (self.__va_bit - pxd_shift)) -  1) 
+        self.pgd = Paging_info(pxd_shift, 1 << pxd_shift, 1 << (self.__va_bit - pxd_shift)) 
 
         # section init
         self.section = self.pmd
